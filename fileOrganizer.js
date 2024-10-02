@@ -2,15 +2,18 @@ const fs = require('fs').promises;
 const path = require('path');
 const mime = require('mime-types');
 const readline = require('readline');
-const logger = require ('./logger');
+const logger = require('./logger');
 
 const rl = readline.createInterface({
     input: process.stdin,
     output: process.stdout
-})
+});
 
 function question(query) {
-    return new Promise(resolve => rl.question(query, resolve));
+    return new Promise(resolve => {
+        logger.info(`>> ${query}`);
+        rl.question('', resolve);
+    });
 }
 
 async function getFileExtension(filename) {
@@ -25,20 +28,20 @@ async function createDirectoryIfNotExists(directory) {
     }
 }
 
-async function organizeByType(sourceDir) {
+async function organizeByType(sourceDir, targetDir) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         for (const file of files) {
             if (file.isFile()) {
                 const filePath = path.join(sourceDir, file.name);
                 const fileExtension = await getFileExtension(file.name);
-                const destinationDir = path.join(sourceDir, fileExtension);
+                const destinationDir = path.join(targetDir, fileExtension);
 
                 await createDirectoryIfNotExists(destinationDir);
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
-                logger.info(`Moved ${file.name} to ${destinationPath}`);
+                logger.warn(`Moved ${file.name} to ${destinationPath}`);
             }
         }
     } catch (err) {
@@ -46,30 +49,30 @@ async function organizeByType(sourceDir) {
     }
 }
 
-// async function organizeByDate(sourceDir) {
-//     try {
-//         const files = await fs.readdir(sourceDir, { withFileTypes: true });
-//         for (const file of files) {
-//             if (file.isFile()) {
-//                 const filePath = path.join(sourceDir, file.name);
-//                 const stats = await fs.stat(filePath);
-//                 const dateCreated = stats.birthtime;
-//                 const yearMonth = `${dateCreated.getFullYear()}-${(dateCreated.getMonth() + 1).toString().padStart(2, '0')}`;
-//                 const destinationDir = path.join(sourceDir, yearMonth);
+async function organizeByDate(sourceDir, targetDir) {
+    try {
+        const files = await fs.readdir(sourceDir, { withFileTypes: true });
+        for (const file of files) {
+            if (file.isFile()) {
+                const filePath = path.join(sourceDir, file.name);
+                const stats = await fs.stat(filePath);
+                const dateCreated = stats.birthtime;
+                const yearMonth = `${dateCreated.getFullYear()}-${(dateCreated.getMonth() + 1).toString().padStart(2, '0')}`;
+                const destinationDir = path.join(targetDir, yearMonth);
 
-//                 await createDirectoryIfNotExists(destinationDir);
+                await createDirectoryIfNotExists(destinationDir);
 
-//                 const destinationPath = path.join(destinationDir, file.name);
-//                 await fs.rename(filePath, destinationPath);
-//                 logger.info(`Moved ${file.name} to ${destinationPath}`);
-//             }
-//         }
-//     } catch (err) {
-//         logger.error('Error organizing files by date:', err);
-//     }
-// }
+                const destinationPath = path.join(destinationDir, file.name);
+                await fs.rename(filePath, destinationPath);
+                logger.warn(`Moved ${file.name} to ${destinationPath}`);
+            }
+        }
+    } catch (err) {
+        logger.error('Error organizing files by date:', err);
+    }
+}
 
-async function organizeBySize(sourceDir) {
+async function organizeBySize(sourceDir, targetDir) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         for (const file of files) {
@@ -83,13 +86,13 @@ async function organizeBySize(sourceDir) {
                 else if (fileSize < 1024 * 1024 * 10) sizeCategory = 'Medium (1-10MB)';
                 else sizeCategory = 'Large (> 10MB)';
 
-                const destinationDir = path.join(sourceDir, sizeCategory);
+                const destinationDir = path.join(targetDir, sizeCategory);
 
                 await createDirectoryIfNotExists(destinationDir);
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
-                logger.info(`Moved ${file.name} to ${destinationPath}`);
+                logger.warn(`Moved ${file.name} to ${destinationPath}`);
             }
         }
     } catch (err) {
@@ -97,7 +100,7 @@ async function organizeBySize(sourceDir) {
     }
 }
 
-async function organizeByUsageFrequency(sourceDir) {
+async function organizeByUsageFrequency(sourceDir, targetDir) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         const now = new Date();
@@ -118,12 +121,12 @@ async function organizeByUsageFrequency(sourceDir) {
                     usageCategory = 'Rarely Used';
                 }
 
-                const destinationDir = path.join(sourceDir, usageCategory);
+                const destinationDir = path.join(targetDir, usageCategory);
                 await createDirectoryIfNotExists(destinationDir);
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
-                logger.info(`Moved ${file.name} to ${destinationPath}`);
+                logger.warn(`Moved ${file.name} to ${destinationPath}`);
             }
         }
     } catch (err) {
@@ -131,7 +134,7 @@ async function organizeByUsageFrequency(sourceDir) {
     }
 }
 
-async function organizeByContentType(sourceDir) {
+async function organizeByContentType(sourceDir, targetDir) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         
@@ -176,12 +179,12 @@ async function organizeByContentType(sourceDir) {
                         category = 'Other';
                 }
 
-                const destinationDir = path.join(sourceDir, category);
+                const destinationDir = path.join(targetDir, category);
                 await createDirectoryIfNotExists(destinationDir);
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
-                logger.info(`Moved ${file.name} to ${destinationPath}`);
+                logger.warn(`Moved ${file.name} to ${destinationPath}`);
             }
         }
     } catch (err) {
@@ -189,66 +192,76 @@ async function organizeByContentType(sourceDir) {
     }
 }
 
-async function reverseOrganization(sourceDir) {
-    try {
-        const entries = await fs.readdir(sourceDir, { withFileTypes: true });
-        for (const entry of entries) {
-            if (entry.isDirectory()) {
-                const subDir = path.join(sourceDir, entry.name);
-                const files = await fs.readdir(subDir);
-                for (const file of files) {
-                    const filePath = path.join(subDir, file);
-                    const destinationPath = path.join(sourceDir, file);
-                    await fs.rename(filePath, destinationPath);
-                    logger.info(`Moved ${file} back to ${destinationPath}`);
-                }
-                await fs.rmdir(subDir);
-                logger.info(`Removed empty directory ${subDir}`);
-            }
-        }
-    } catch (err) {
-        logger.error('Error reversing organization:', err);
+async function organizeFiles(sourceDir, targetDir, organizationType) {
+    logger.info(`Starting file organization: by ${organizationType}`);
+    
+    let organizeFunction;
+    switch (organizationType.toLowerCase()) {
+        case 'type':
+            organizeFunction = organizeByType;
+            break;
+        case 'date':
+            organizeFunction = organizeByDate;
+            break;
+        case 'size':
+            organizeFunction = organizeBySize;
+            break;
+        case 'content':
+            organizeFunction = organizeByContentType;
+            break;
+        case 'usage':
+            organizeFunction = organizeByUsageFrequency;
+            break;
+        default:
+            throw new Error('Invalid organization type');
     }
-}
 
+    await organizeFunction(sourceDir, targetDir);
+    logger.info(`File organization (${organizationType}) completed successfully`);
+}
 
 async function main() {
     try {
-        logger.info('File Organizer script started');
+        logger.trace('Initializing File Organizer');
+        logger.debug('Debug mode is on');
+        
+        logger.info("Welcome to the File Organizer!");
+
+        logger.trace('Entering main function');
+        logger.debug('Preparing to ask for user input');
 
         const sourceDir = await question('Enter the source directory to organize: ');
         const targetDir = await question('Enter the target directory to move the files to: ');
-        const organizationType = await question('Enter the type of organization (type, date, size, content): ');
+        const organizationType = await question('Enter the type of organization (type, date, size, content, usage): ');
 
-        logger.info({ sourceDir, targetDir, organizationType }, 'User inputs');
+        logger.debug(`Received input - Source: ${sourceDir}, Target: ${targetDir}, Type: ${organizationType}`);
+
+        logger.trace('About to start file organization');
+
+        logger.debug("Starting file organization process...");
+
+        logger.trace('File Organizer script started');
+        logger.debug(`Source Directory: ${sourceDir}`);
+        logger.debug(`Target Directory: ${targetDir}`);
+        logger.debug(`Organization Type: ${organizationType}`);
 
         await createDirectoryIfNotExists(targetDir);
+        await organizeFiles(sourceDir, targetDir, organizationType);
 
-        switch (organizationType.toLowerCase()) {
-            case 'type':
-                await organizeByType(sourceDir, targetDir);
-                break;
-            case 'date':
-                await organizeByUsageFrequency(sourceDir, targetDir);
-                break;
-            case 'size':
-                await organizeBySize(sourceDir, targetDir);
-                break;
-            case 'content':
-                await organizeByContentType(sourceDir, targetDir);
-                break;
-            default:
-                logger.error('Invalid organization type');
-                return;
-        }
-
-        logger.info('File organization completed successfully');
+        logger.trace('File organization process completed');
+        logger.debug('Exiting main function');
+        logger.info("File organization completed successfully!");
     } catch (err) {
-        logger.error({ err }, 'An error occurred');
+        logger.error('An error occurred during file organization');
+        logger.error(err.message);
     } finally {
         rl.close();
     }
 }
 
-main();
+logger.trace('File Organizer script initialized');
+main().catch(err => {
+    logger.fatal("Unhandled error in main function:");
+    logger.fatal(err);
+});
 

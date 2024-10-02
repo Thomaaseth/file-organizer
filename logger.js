@@ -1,12 +1,20 @@
-const pino = require ('pino');
+const pino = require('pino');
 
 const logger = pino({
-    level: 'info',
+    level: 'trace',
     transport: {
         targets: [
-        { target: 'pino-pretty', options: { destination: 1 } },
-        { target: 'pino/file', options: { destination: 'file-organizer.log'} }
-    ]
+            {
+                target: 'pino-pretty',
+                options: {
+                    destination: 1,
+                    sync: true,
+                    translateTime: 'HH:MM:ss',
+                    ignore: 'pid,hostname',
+                    colorize: true,
+                }
+            },
+        ]
     }
 });
 
