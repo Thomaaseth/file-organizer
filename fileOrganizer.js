@@ -1,4 +1,4 @@
-const fs = require('fs').promises;
+const fs = require('fs-extra');
 const path = require('path');
 const mime = require('mime-types');
 const readline = require('readline');
@@ -123,9 +123,9 @@ async function organizeByUsageFrequency(sourceDir, targetDir, summary) {
                 const daysSinceLastAccess = (now - lastAccessTime) / (1000 * 60 * 60 * 24);
 
                 let usageCategory;
-                if (daysSinceLastAccess <= 7) {
+                if (daysSinceLastAccess <= 180) {
                     usageCategory = 'Frequently Used';
-                } else if (daysSinceLastAccess <= 30) {
+                } else if (daysSinceLastAccess <= 360) {
                     usageCategory = 'Occasionally Used';
                 } else {
                     usageCategory = 'Rarely Used';
@@ -253,9 +253,13 @@ async function main() {
         logger.trace('Entering main function');
         logger.debug('Preparing to ask for user input');
 
-        const sourceDir = await question('Enter the source directory to organize: ');
-        const targetDir = await question('Enter the target directory to move the files to: ');
+        const sourceDir = await question('Enter the source directory to organize (or press Enter for current directory): ');
+        const targetDir = await question('Enter the target directory to move the files to (or press Enter for current directory): ');
         const organizationType = await question('Enter the type of organization (type, date, size, content, usage): ');
+
+        const currentDir = process.cwd();
+        const resolvedSourceDir = sourceDir ? path.resolve(currentDir, sourceDir) : currentDir;
+        const resolvedTargetDir = targetDir ? path.resolve(currentDir, targetDir) : currentDir;
 
         logger.debug(`Received input - Source: ${sourceDir}, Target: ${targetDir}, Type: ${organizationType}`);
 
@@ -264,8 +268,8 @@ async function main() {
         logger.debug("Starting file organization process...");
 
         logger.trace('File Organizer script started');
-        logger.debug(`Source Directory: ${sourceDir}`);
-        logger.debug(`Target Directory: ${targetDir}`);
+        logger.debug(`Source Directory: ${resolvedSourceDir}`);
+        logger.debug(`Target Directory: ${resolvedTargetDir}`);
         logger.debug(`Organization Type: ${organizationType}`);
 
         await createDirectoryIfNotExists(targetDir);

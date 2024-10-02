@@ -1,17 +1,25 @@
 {
   "name": "file-organizer",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "description": "A simple file organizer",
   "main": "fileOrganizer.js",
+  "bin": "fileOrganizer.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node fileOrganizer.js",
+    "build": "pkg ."
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "description": "",
   "dependencies": {
+    "fs-extra": "^10.1.0",
     "mime-types": "^2.1.35",
+    "path": "^0.12.7",
     "pino": "^9.4.0",
-    "pino-pretty": "^11.2.2"
+    "pino-pretty": "^11.2.2",
+    "readline": "^1.3.0"
+  },
+  "devDependencies": {
+    "pkg-fetch": "^3.5.2"
   }
 }
