@@ -16,7 +16,7 @@ function question(query) {
     });
 }
 
-async function getFileExtension(filename) {
+function getFileExtension(filename) {
     return path.extname(filename).slice(1).toLowerCase();
 }
 
@@ -28,7 +28,7 @@ async function createDirectoryIfNotExists(directory) {
     }
 }
 
-async function organizeByType(sourceDir, targetDir) {
+async function organizeByType(sourceDir, targetDir, summary) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         for (const file of files) {
@@ -38,10 +38,12 @@ async function organizeByType(sourceDir, targetDir) {
                 const destinationDir = path.join(targetDir, fileExtension);
 
                 await createDirectoryIfNotExists(destinationDir);
+                summary.foldersCreated.add(destinationDir);
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
                 logger.warn(`Moved ${file.name} to ${destinationPath}`);
+                summary.filesMoved++;
             }
         }
     } catch (err) {
@@ -49,7 +51,7 @@ async function organizeByType(sourceDir, targetDir) {
     }
 }
 
-async function organizeByDate(sourceDir, targetDir) {
+async function organizeByDate(sourceDir, targetDir, summary) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         for (const file of files) {
@@ -61,10 +63,14 @@ async function organizeByDate(sourceDir, targetDir) {
                 const destinationDir = path.join(targetDir, yearMonth);
 
                 await createDirectoryIfNotExists(destinationDir);
+                summary.foldersCreated.add(destinationDir);
+
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
                 logger.warn(`Moved ${file.name} to ${destinationPath}`);
+                summary.filesMoved++;
+
             }
         }
     } catch (err) {
@@ -72,7 +78,7 @@ async function organizeByDate(sourceDir, targetDir) {
     }
 }
 
-async function organizeBySize(sourceDir, targetDir) {
+async function organizeBySize(sourceDir, targetDir, summary) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         for (const file of files) {
@@ -89,10 +95,14 @@ async function organizeBySize(sourceDir, targetDir) {
                 const destinationDir = path.join(targetDir, sizeCategory);
 
                 await createDirectoryIfNotExists(destinationDir);
+                summary.foldersCreated.add(destinationDir);
+
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
                 logger.warn(`Moved ${file.name} to ${destinationPath}`);
+                summary.filesMoved++;
+
             }
         }
     } catch (err) {
@@ -100,7 +110,7 @@ async function organizeBySize(sourceDir, targetDir) {
     }
 }
 
-async function organizeByUsageFrequency(sourceDir, targetDir) {
+async function organizeByUsageFrequency(sourceDir, targetDir, summary) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         const now = new Date();
@@ -123,10 +133,14 @@ async function organizeByUsageFrequency(sourceDir, targetDir) {
 
                 const destinationDir = path.join(targetDir, usageCategory);
                 await createDirectoryIfNotExists(destinationDir);
+                summary.foldersCreated.add(destinationDir);
+
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
                 logger.warn(`Moved ${file.name} to ${destinationPath}`);
+                summary.filesMoved++;
+
             }
         }
     } catch (err) {
@@ -134,63 +148,69 @@ async function organizeByUsageFrequency(sourceDir, targetDir) {
     }
 }
 
-async function organizeByContentType(sourceDir, targetDir) {
-    try {
-        const files = await fs.readdir(sourceDir, { withFileTypes: true });
-        
-        for (const file of files) {
-            if (file.isFile()) {
-                const filePath = path.join(sourceDir, file.name);
-                const mimeType = mime.lookup(filePath) || 'application/octet-stream';
-                const contentType = mimeType.split('/')[0];
-                const extension = path.extname(file.name).slice(1).toLowerCase();
-
-                let category;
-                switch (contentType) {
-                    case 'image':
-                        category = 'Images';
-                        break;
-                    case 'video':
-                        category = 'Videos';
-                        break;
-                    case 'audio':
-                        category = 'Audio';
-                        break;
-                    case 'text':
-                        category = 'Documents';
-                        break;
-                    case 'application':
-                        if (['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 
-                             'odt', 'ods', 'odp', 'odg', 'odf', 'rtf', 'txt', 'csv',
-                             'md', 'pages', 'numbers', 'key', 'wpd', 'wps', 'epub',
-                             'tex', 'latex', 'dotx', 'dotm', 'xltx', 'xltm', 'potx',
-                             'potm', 'ott', 'ots', 'otp', 'dif', 'slk', 'xlam',
-                             'xla', 'odb', 'dbf', 'mdb', 'accdb', 'sqlite', 'json',
-                             'xml', 'yaml', 'yml', 'ini', 'cfg', 'log', 'azw', 'mobi'
-                            ].includes(extension)) {
-                            category = 'Documents';
-                        } else if (['exe', 'msi', 'dmg', 'app', 'apk'].includes(extension) || mimeType === 'application/x-msdownload') {
-                            category = 'Executables';
-                        } else {
-                            category = 'Other Applications';
-                        }
-                        break;
-                    default:
-                        category = 'Other';
-                }
-
-                const destinationDir = path.join(targetDir, category);
-                await createDirectoryIfNotExists(destinationDir);
-
-                const destinationPath = path.join(destinationDir, file.name);
-                await fs.rename(filePath, destinationPath);
-                logger.warn(`Moved ${file.name} to ${destinationPath}`);
-            }
-        }
-    } catch (err) {
-        logger.error('Error organizing files by content type:', err);
+const fileTypeMapping = {
+    documents: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'rtf', 'odt', 'ods', 'odp', 'md', 'csv', 'json', 'xml', 'yml', 'yaml'],
+    images: ['jpg', 'jpeg', 'png', 'gif', 'bmp', 'svg', 'tiff', 'webp'],
+    videos: ['mp4', 'avi', 'mov', 'wmv', 'flv', 'mkv', 'webm'],
+    audio: ['mp3', 'wav', 'ogg', 'flac', 'aac', 'm4a'],
+    archives: ['zip', 'rar', '7z', 'tar', 'gz', 'bz2'],
+    executables: ['exe', 'msi', 'dmg', 'app', 'apk'],
+    // Add more categories as needed
+  };
+  
+  // For future use
+  function getCategoryByExtension(extension) {
+    for (const [category, extensions] of Object.entries(fileTypeMapping)) {
+      if (extensions.includes(extension)) {
+        return category;
+      }
     }
-}
+    return 'Other';
+  }
+  
+  async function organizeByContentType(sourceDir, targetDir, summary) {
+    try {
+      const files = await fs.readdir(sourceDir, { withFileTypes: true });
+      
+      for (const file of files) {
+        if (file.isFile()) {
+          const filePath = path.join(sourceDir, file.name);
+          const mimeType = mime.lookup(filePath) || 'application/octet-stream';
+          const extension = path.extname(file.name).slice(1).toLowerCase();
+  
+          let category;
+          if (mimeType.startsWith('image/')) {
+            category = 'Images';
+          } else if (mimeType.startsWith('video/')) {
+            category = 'Videos';
+          } else if (mimeType.startsWith('audio/')) {
+            category = 'Audio';
+          } else if (mimeType.startsWith('text/') || fileTypeMapping.documents.includes(extension)) {
+            category = 'Documents';
+          } else if (fileTypeMapping.executables.includes(extension)) {
+            category = 'Executables';
+          } else if (fileTypeMapping.archives.includes(extension)) {
+            category = 'Archives';
+          } else {
+            category = 'Other';
+          }
+  
+          const destinationDir = path.join(targetDir, category);
+          await createDirectoryIfNotExists(destinationDir);
+          summary.foldersCreated.add(destinationDir);
+
+  
+          const destinationPath = path.join(destinationDir, file.name);
+          await fs.rename(filePath, destinationPath);
+          logger.warn(`Moved ${file.name} to ${destinationPath}`);
+          summary.filesMoved++;
+
+        }
+      }
+    } catch (err) {
+      logger.error('Error organizing files by content type:', err);
+    }
+  }
 
 async function organizeFiles(sourceDir, targetDir, organizationType) {
     logger.info(`Starting file organization: by ${organizationType}`);
@@ -216,8 +236,11 @@ async function organizeFiles(sourceDir, targetDir, organizationType) {
             throw new Error('Invalid organization type');
     }
 
-    await organizeFunction(sourceDir, targetDir);
+    const summary = { filesMoved: 0, foldersCreated: new Set() };
+    await organizeFunction(sourceDir, targetDir, summary);
     logger.info(`File organization (${organizationType}) completed successfully`);
+    logger.info(`Summary: ${summary.filesMoved} files moved to ${summary.foldersCreated.size} folders`);
+
 }
 
 async function main() {
