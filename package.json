@@ -4,8 +4,7 @@
   "description": "A simple file organizer",
   "main": "fileOrganizer.js",
   "scripts": {
-    "start": "node fileOrganizer.js",
-    "build": "nexe fileOrganizer.js -o dist/file-organizer.exe --build"
+    "start": "node fileOrganizer.js"
   },
   "keywords": [],
   "author": "Thomaaseth",
@@ -17,8 +16,5 @@
     "pino": "^9.4.0",
     "pino-pretty": "^11.2.2",
     "readline": "^1.3.0"
-  },
-  "devDependencies": {
-    "nexe": "^4.0.0-rc.6"
   }
 }
