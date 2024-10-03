@@ -23,22 +23,31 @@ function getFileExtension(filename) {
 async function createDirectoryIfNotExists(directory) {
     try {
         await fs.mkdir(directory, { recursive: true });
+        logger.debug(`Created directory: ${directory}`);
     } catch (err) {
-        if (err.code !== 'EEXIST') throw err;
+        if (err.code !== 'EEXIST') {
+            logger.error(`Error creating directory ${directory}:`, err);
+            throw err;
+        }
     }
 }
 
 async function organizeByType(sourceDir, targetDir, summary) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
+        const createdDirectories = new Set();
+
         for (const file of files) {
             if (file.isFile()) {
                 const filePath = path.join(sourceDir, file.name);
                 const fileExtension = await getFileExtension(file.name);
                 const destinationDir = path.join(targetDir, fileExtension);
 
-                await createDirectoryIfNotExists(destinationDir);
-                summary.foldersCreated.add(destinationDir);
+                if (!createdDirectories.has(destinationDir)) {
+                    await createDirectoryIfNotExists(destinationDir);
+                    createdDirectories.add(destinationDir);
+                    summary.foldersCreated.add(destinationDir);
+                }
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
@@ -51,26 +60,47 @@ async function organizeByType(sourceDir, targetDir, summary) {
     }
 }
 
-async function organizeByDate(sourceDir, targetDir, summary) {
+async function organizeByDate(sourceDir, targetDir, summary, timeline) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
+        const createdDirectories = new Set();
+
         for (const file of files) {
             if (file.isFile()) {
                 const filePath = path.join(sourceDir, file.name);
                 const stats = await fs.stat(filePath);
-                const dateCreated = stats.birthtime;
-                const yearMonth = `${dateCreated.getFullYear()}-${(dateCreated.getMonth() + 1).toString().padStart(2, '0')}`;
-                const destinationDir = path.join(targetDir, yearMonth);
+                const fileDate = stats.mtime;
 
-                await createDirectoryIfNotExists(destinationDir);
-                summary.foldersCreated.add(destinationDir);
+                let folderName;
+                switch(timeline) {
+                    case 'days':
+                        folderName = fileDate.toISOString().split('T')[0]; // YYYY-MM-DD
+                        break;
+                    case 'weeks':
+                        folderName = getWeekOfMonth(fileDate);
+                        break;
+                    case 'months':
+                        folderName = `${fileDate.getFullYear()}-${(fileDate.getMonth() + 1).toString().padStart(2, '0')}`;
+                        break;
+                    case 'years':
+                        folderName = fileDate.getFullYear().toString();
+                        break;
+                    default:
+                        throw new Error('Invalid timeline option');
+                }
 
+                const destinationDir = path.join(targetDir, folderName);
+                
+                if (!createdDirectories.has(destinationDir)) {
+                    await createDirectoryIfNotExists(destinationDir);
+                    createdDirectories.add(destinationDir);
+                    summary.foldersCreated.add(destinationDir);
+                }
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
-                logger.warn(`Moved ${file.name} to ${destinationPath}`);
+                logger.warn(`Moved ${file.name} to ${destinationPath} (Modified: ${fileDate.toISOString()})`);
                 summary.filesMoved++;
-
             }
         }
     } catch (err) {
@@ -78,9 +108,28 @@ async function organizeByDate(sourceDir, targetDir, summary) {
     }
 }
 
-async function organizeBySize(sourceDir, targetDir, summary) {
+// Helper function to get the week of the month
+function getWeekOfMonth(date) {
+    const year = date.getFullYear();
+    const month = date.getMonth();
+    const firstDayOfMonth = new Date(year, month, 1);
+    const weekNumber = Math.ceil((date.getDate() + firstDayOfMonth.getDay() - 1) / 7);
+    
+    // Get the date of the first day of the week
+    const startOfWeek = new Date(date);
+    startOfWeek.setDate(date.getDate() - date.getDay() + (date.getDay() === 0 ? -6 : 1));
+
+    // Format: YYYY-MM-DD_Week_N
+    return `${startOfWeek.toISOString().slice(0, 10)}_Week_${weekNumber}`;
+}
+
+
+
+async function organizeBySize(sourceDir, targetDir, summary, customSizes) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
+        const createdDirectories = new Set();
+
         for (const file of files) {
             if (file.isFile()) {
                 const filePath = path.join(sourceDir, file.name);
@@ -88,32 +137,44 @@ async function organizeBySize(sourceDir, targetDir, summary) {
                 const fileSize = stats.size;
                 let sizeCategory;
 
-                if (fileSize < 1024 * 1024) sizeCategory = 'Small (< 1MB)';
-                else if (fileSize < 1024 * 1024 * 10) sizeCategory = 'Medium (1-10MB)';
-                else sizeCategory = 'Large (> 10MB)';
+                if (customSizes) {
+                    const { small, medium } = customSizes;
+                    if (fileSize < small * 1024 * 1024) sizeCategory = `Small`;
+                    else if (fileSize < medium * 1024 * 1024) sizeCategory = `Medium`;
+                    else sizeCategory = `Large`;
+                } else {
+                    if (fileSize < 1024 * 1024) sizeCategory = 'Small';
+                    else if (fileSize < 1024 * 1024 * 10) sizeCategory = 'Medium';
+                    else sizeCategory = 'Large';    
+                }
 
                 const destinationDir = path.join(targetDir, sizeCategory);
-
-                await createDirectoryIfNotExists(destinationDir);
-                summary.foldersCreated.add(destinationDir);
-
+                
+                if (!createdDirectories.has(destinationDir)) {
+                    await createDirectoryIfNotExists(destinationDir);
+                    createdDirectories.add(destinationDir);
+                    summary.foldersCreated.add(destinationDir);
+                }
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
-                logger.warn(`Moved ${file.name} to ${destinationPath}`);
+                logger.warn(`Moved ${file.name} to ${destinationPath} (Size: ${fileSize} bytes)`);
                 summary.filesMoved++;
-
             }
         }
     } catch (err) {
         logger.error('Error organizing files by size:', err);
+        logger.error(err.stack);
+        throw err; 
     }
 }
 
-async function organizeByUsageFrequency(sourceDir, targetDir, summary) {
+async function organizeByLastUsedTime(sourceDir, targetDir, summary, customUsage) {
     try {
         const files = await fs.readdir(sourceDir, { withFileTypes: true });
         const now = new Date();
+        const createdDirectories = new Set();
+
         
         for (const file of files) {
             if (file.isFile()) {
@@ -123,28 +184,41 @@ async function organizeByUsageFrequency(sourceDir, targetDir, summary) {
                 const daysSinceLastAccess = (now - lastAccessTime) / (1000 * 60 * 60 * 24);
 
                 let usageCategory;
-                if (daysSinceLastAccess <= 180) {
-                    usageCategory = 'Frequently Used';
-                } else if (daysSinceLastAccess <= 360) {
-                    usageCategory = 'Occasionally Used';
+                if (customUsage) {
+                    const { frequent, occasional } = customUsage;
+                    if (daysSinceLastAccess <= frequent) {
+                        usageCategory = `Recently Used`;
+                    } else if (daysSinceLastAccess <= occasional) {
+                        usageCategory = `Moderately Used`;
+                    } else {
+                        usageCategory = `Rarely Used`;
+                    }
                 } else {
-                    usageCategory = 'Rarely Used';
+                    if (daysSinceLastAccess <= 30) {
+                        usageCategory = 'Recently Used';
+                    } else if (daysSinceLastAccess <= 90) {
+                        usageCategory = 'Moderately Used';
+                    } else {
+                        usageCategory = 'Rarely Used';
+                    }    
                 }
-
+                
                 const destinationDir = path.join(targetDir, usageCategory);
-                await createDirectoryIfNotExists(destinationDir);
-                summary.foldersCreated.add(destinationDir);
 
+                if (!createdDirectories.has(destinationDir)) {
+                    await createDirectoryIfNotExists(destinationDir);
+                    createdDirectories.add(destinationDir);
+                    summary.foldersCreated.add(destinationDir);
+                }
 
                 const destinationPath = path.join(destinationDir, file.name);
                 await fs.rename(filePath, destinationPath);
                 logger.warn(`Moved ${file.name} to ${destinationPath}`);
                 summary.filesMoved++;
-
             }
         }
     } catch (err) {
-        logger.error('Error organizing files by usage frequency:', err);
+        logger.error('Error organizing files by last used time:', err);
     }
 }
 
@@ -171,6 +245,8 @@ const fileTypeMapping = {
   async function organizeByContentType(sourceDir, targetDir, summary) {
     try {
       const files = await fs.readdir(sourceDir, { withFileTypes: true });
+      const createdDirectories = new Set();
+
       
       for (const file of files) {
         if (file.isFile()) {
@@ -196,9 +272,12 @@ const fileTypeMapping = {
           }
   
           const destinationDir = path.join(targetDir, category);
-          await createDirectoryIfNotExists(destinationDir);
-          summary.foldersCreated.add(destinationDir);
 
+            if (!createdDirectories.has(destinationDir)) {
+                await createDirectoryIfNotExists(destinationDir);
+                createdDirectories.add(destinationDir);
+                summary.foldersCreated.add(destinationDir);
+            }
   
           const destinationPath = path.join(destinationDir, file.name);
           await fs.rename(filePath, destinationPath);
@@ -212,7 +291,7 @@ const fileTypeMapping = {
     }
   }
 
-async function organizeFiles(sourceDir, targetDir, organizationType) {
+async function organizeFiles(sourceDir, targetDir, organizationType, timeline, customSizes, customUsage) {
     logger.info(`Starting file organization: by ${organizationType}`);
     
     let organizeFunction;
@@ -221,27 +300,37 @@ async function organizeFiles(sourceDir, targetDir, organizationType) {
             organizeFunction = organizeByType;
             break;
         case 'date':
-            organizeFunction = organizeByDate;
+            organizeFunction = (src, tgt, summary) => organizeByDate(src, tgt, summary, timeline);
             break;
         case 'size':
-            organizeFunction = organizeBySize;
+            organizeFunction = (src, tgt, summary) => organizeBySize(src, tgt, summary, customSizes);
             break;
         case 'content':
             organizeFunction = organizeByContentType;
             break;
-        case 'usage':
-            organizeFunction = organizeByUsageFrequency;
+        case 'last used':
+            organizeFunction = (src, tgt, summary) => organizeByLastUsedTime(src, tgt, summary, customUsage);
             break;
         default:
             throw new Error('Invalid organization type');
     }
 
     const summary = { filesMoved: 0, foldersCreated: new Set() };
-    await organizeFunction(sourceDir, targetDir, summary);
-    logger.info(`File organization (${organizationType}) completed successfully`);
-    logger.info(`Summary: ${summary.filesMoved} files moved to ${summary.foldersCreated.size} folders`);
-
+    try {
+        await organizeFunction(sourceDir, targetDir, summary);
+        
+        if (summary.filesMoved > 0) {
+            logger.info(`File organization (${organizationType}${timeline ? `, timeline: ${timeline}` : ''}${customSizes ? ', custom sizes' : ''}${customUsage ? ', custom usage' : ''}) completed successfully`);
+            logger.info(`Summary: ${summary.filesMoved} files moved to ${summary.foldersCreated.size} folders`);
+        } else {
+            logger.warn(`No files were moved during ${organizationType} organization. Please check your source directory and file permissions.`);
+        }
+    } catch (err) {
+        logger.error(`Error during file organization by ${organizationType}:`, err);
+        logger.error(err.stack);
+    }
 }
+
 
 async function main() {
     try {
@@ -255,7 +344,26 @@ async function main() {
 
         const sourceDir = await question('Enter the source directory to organize (or press Enter for current directory): ');
         const targetDir = await question('Enter the target directory to move the files to (or press Enter for current directory): ');
-        const organizationType = await question('Enter the type of organization (type, date, size, content, usage): ');
+        const organizationType = await question('Enter the type of organization (type, date, size, content, last used): ');
+
+        let timeline, customSizes, customUsage;
+        if (organizationType.toLowerCase() === 'date') {
+            timeline = await question('Enter the timeline for date organization (days, weeks, months, years): ');
+        } else if (organizationType.toLowerCase() === 'size') {
+            const useCustomSizes = await question('Do you want to use custom size categories? (yes/no): ');
+            if (useCustomSizes.toLowerCase() === 'yes') {
+                const smallMax = parseInt(await question('Enter the maximum size for small files in MB: '));
+                const mediumMax = parseInt(await question('Enter the maximum size for medium files in MB: '));
+                customSizes = { small: smallMax, medium: mediumMax };
+            }
+        } else if (organizationType.toLowerCase() === 'last used') {
+            const useCustomUsage = await question('Do you want to use custom last used time categories? (yes/no): ');
+            if (useCustomUsage.toLowerCase() === 'yes') {
+                const recentMax = parseInt(await question('Enter the maximum number of days for recently used files: '));
+                const moderateMax = parseInt(await question('Enter the maximum number of days for moderately used files: '));
+                customUsage = { recent: recentMax, moderate: moderateMax };
+            }
+        }
 
         const currentDir = process.cwd();
         const resolvedSourceDir = sourceDir ? path.resolve(currentDir, sourceDir) : currentDir;
@@ -273,18 +381,19 @@ async function main() {
         logger.debug(`Organization Type: ${organizationType}`);
 
         await createDirectoryIfNotExists(targetDir);
-        await organizeFiles(sourceDir, targetDir, organizationType);
+        await organizeFiles(sourceDir, targetDir, organizationType, timeline, customSizes, customUsage);
 
         logger.trace('File organization process completed');
         logger.debug('Exiting main function');
-        logger.info("File organization completed successfully!");
     } catch (err) {
         logger.error('An error occurred during file organization');
         logger.error(err.message);
+        logger.error(err.stack);
     } finally {
         rl.close();
     }
 }
+
 
 logger.trace('File Organizer script initialized');
 main().catch(err => {
