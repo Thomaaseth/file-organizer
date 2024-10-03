@@ -110,17 +110,25 @@ async function organizeByDate(sourceDir, targetDir, summary, timeline) {
 
 // Helper function to get the week of the month
 function getWeekOfMonth(date) {
-    const year = date.getFullYear();
-    const month = date.getMonth();
-    const firstDayOfMonth = new Date(year, month, 1);
-    const weekNumber = Math.ceil((date.getDate() + firstDayOfMonth.getDay() - 1) / 7);
+    const firstDayOfMonth = new Date(date.getFullYear(), date.getMonth(), 1);
+    const firstMondayOfMonth = new Date(firstDayOfMonth);
+    firstMondayOfMonth.setDate(firstMondayOfMonth.getDate() + (8 - firstMondayOfMonth.getDay()) % 7);
     
-    // Get the date of the first day of the week
-    const startOfWeek = new Date(date);
-    startOfWeek.setDate(date.getDate() - date.getDay() + (date.getDay() === 0 ? -6 : 1));
-
-    // Format: YYYY-MM-DD_Week_N
-    return `${startOfWeek.toISOString().slice(0, 10)}_Week_${weekNumber}`;
+    let weekNumber;
+    if (date < firstMondayOfMonth) {
+        // If the date is before the first Monday, it's week 1
+        weekNumber = 1;
+    } else {
+        // Calculate the week number based on the first Monday
+        weekNumber = Math.ceil((date.getDate() - firstMondayOfMonth.getDate() + 1) / 7) + 1;
+    }
+    
+    // Find the Monday of the current week
+    const mondayOfWeek = new Date(date);
+    mondayOfWeek.setDate(date.getDate() - (date.getDay() - 1));
+    
+    // Format the result
+    return `${mondayOfWeek.toISOString().slice(0, 10)}_Week_${weekNumber}`;
 }
 
 
@@ -339,3 +347,12 @@ main().catch(err => {
     logger.fatal(err);
 });
 
+module.exports = {
+    getFileExtension,
+    createDirectoryIfNotExists,
+    organizeByType,
+    organizeByDate,
+    organizeBySize,
+    organizeByContentType,
+    getWeekOfMonth
+  };
